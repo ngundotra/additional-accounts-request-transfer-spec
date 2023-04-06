@@ -5,6 +5,7 @@ skip-lint = false
 [programs.localnet]
 itoken_poc = "Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS"
 token_program = "32d7pdBNmDmXAXcHkivteqLjaNVovWQ1JMn85LdyyAux"
+wrapper_program = "F96CHxPDRgjUypdUqpJocgT59vEPT79AFJXjtyPCBaRt"
 
 [registry]
 url = "https://api.apr.dev"

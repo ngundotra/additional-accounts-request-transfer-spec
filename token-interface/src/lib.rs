@@ -74,13 +74,14 @@ pub fn call<
 >(
     ix_name: String,
     ctx: CpiContext<'_, '_, '_, 'info, C1>,
+    args: Vec<u8>,
     log_info: bool,
 ) -> Result<()> {
     // preflight
     if log_info {
         msg!("Preflight");
     }
-    call_preflight_interface_function(ix_name.clone(), &ctx)?;
+    call_preflight_interface_function(ix_name.clone(), &ctx, &args)?;
 
     // parse cpi return data
     if log_info {
@@ -103,6 +104,7 @@ pub fn call<
     call_interface_function(
         ix_name.clone(),
         cpi_ctx,
+        &args,
         additional_interface_accounts,
         log_info,
     )?;
@@ -112,11 +114,16 @@ pub fn call<
 pub fn call_preflight_interface_function<'info, T: ToAccountInfos<'info> + ToAccountMetas>(
     function_name: String,
     ctx: &CpiContext<'_, '_, '_, 'info, T>,
+    args: &[u8],
 ) -> Result<()> {
     // setup
-    let ix_data: Vec<u8> = hash::hash(format!("global:preflight_{}", &function_name).as_bytes())
-        .to_bytes()
-        .to_vec();
+    let mut ix_data: Vec<u8> =
+        hash::hash(format!("global:preflight_{}", &function_name).as_bytes())
+            .to_bytes()
+            .to_vec();
+
+    ix_data.extend_from_slice(args);
+
     let ix_account_metas = ctx.accounts.to_account_metas(Some(false));
     let ix = anchor_lang::solana_program::instruction::Instruction {
         program_id: ctx.program.key(),
@@ -132,15 +139,18 @@ pub fn call_preflight_interface_function<'info, T: ToAccountInfos<'info> + ToAcc
 pub fn call_interface_function<'info, T: ToAccountInfos<'info> + ToAccountMetas>(
     function_name: String,
     ctx: CpiContext<'_, '_, '_, 'info, T>,
+    args: &[u8],
     additional_interface_accounts: PreflightPayload,
     log_info: bool,
 ) -> Result<()> {
     // setup
     let remaining_accounts = ctx.remaining_accounts.to_vec();
 
-    let ix_data: Vec<u8> = hash::hash(format!("global:{}", &function_name).as_bytes())
+    let mut ix_data: Vec<u8> = hash::hash(format!("global:{}", &function_name).as_bytes())
         .to_bytes()
         .to_vec();
+    ix_data.extend_from_slice(&args);
+
     let mut ix_account_metas = ctx.accounts.to_account_metas(None);
     ix_account_metas.append(
         additional_interface_accounts
@@ -191,7 +201,6 @@ pub fn call_interface_function<'info, T: ToAccountInfos<'info> + ToAccountMetas>
         // execute
         invoke(&ix, &ix_ais)?;
     }
-
     Ok(())
 }
 
@@ -254,43 +263,6 @@ pub struct TISetAuthority<'info> {
     pub program: AccountInfo<'info>,
 }
 
-// pub trait ToTargetProgram<'info> {
-//     type TargetCtx<'_info>: ToAccountInfos<'_info> + ToAccountMetas;
-
-//     fn to_target_program(&self) -> Pubkey;
-//     fn get_target_program(&self) -> AccountInfo<'info>;
-//     fn to_target_context(
-//         &self,
-//         remaining_accounts: Vec<AccountInfo<'info>>,
-//     ) -> CpiContext<'_, '_, '_, 'info, Self::TargetCtx<'info>>;
-// }
-
-// impl<'info> ToTargetProgram<'info> for TILock<'info> {
-//     type TargetCtx<'a> = ILock<'a>;
-
-//     fn to_target_program(&self) -> Pubkey {
-//         self.perm_program.key()
-//     }
-//     fn get_target_program(&self) -> AccountInfo<'info> {
-//         self.perm_program.clone()
-//     }
-
-//     fn to_target_context(
-//         &self,
-//         remaining_accounts: Vec<AccountInfo<'info>>,
-//     ) -> CpiContext<'_, '_, '_, 'info, Self::TargetCtx<'info>> {
-//         let inner = ILock {
-//             token: self.token.to_account_info(),
-//             mint: self.mint.to_account_info(),
-//             delegate: self.delegate.to_account_info(),
-//             payer: self.payer.to_account_info(),
-//             token_program: self.token_program.to_account_info(),
-//         };
-//         CpiContext::new(self.get_target_program(), inner)
-//             .with_remaining_accounts(remaining_accounts)
-//     }
-// }
-
 // #[derive(Accounts)]
 // pub struct TIUnlock<'info> {
 //     #[account(mut)]
@@ -312,27 +284,27 @@ pub struct TISetAuthority<'info> {
 //     pub token_program: AccountInfo<'info>,
 // }
 
-// impl<'info> ToTargetProgram<'info> for TIUnlock<'info> {
-//     type TargetCtx<'a> = IUnlock<'a>;
+impl<'info> ToTargetProgram<'info> for ITransfer<'info> {
+    type TargetCtx<'a> = ITransfer<'a>;
 
-//     fn to_target_program(&self) -> Pubkey {
-//         self.perm_program.key()
-//     }
-//     fn get_target_program(&self) -> AccountInfo<'info> {
-//         self.perm_program.clone()
-//     }
+    fn to_target_program(&self) -> Pubkey {
+        self.mint.key()
+    }
+    fn get_target_program(&self) -> AccountInfo<'info> {
+        self.mint.clone()
+    }
 
-//     fn to_target_context(
-//         &self,
-//         remaining_accounts: Vec<AccountInfo<'info>>,
-//     ) -> CpiContext<'_, '_, '_, 'info, Self::TargetCtx<'info>> {
-//         let inner = IUnlock {
-//             token: self.token.to_account_info(),
-//             mint: self.mint.to_account_info(),
-//             delegate: self.delegate.to_account_info(),
-//             token_program: self.token_program.to_account_info(),
-//         };
-//         CpiContext::new(self.get_target_program(), inner)
-//             .with_remaining_accounts(remaining_accounts)
-//     }
-// }
+    fn to_target_context(
+        &self,
+        remaining_accounts: Vec<AccountInfo<'info>>,
+    ) -> CpiContext<'_, '_, '_, 'info, Self::TargetCtx<'info>> {
+        let inner = ITransfer {
+            to: self.to.to_account_info(),
+            mint: self.mint.to_account_info(),
+            owner: self.mint.to_account_info(),
+            authority: self.authority.clone(),
+        };
+        CpiContext::new(self.get_target_program(), inner)
+            .with_remaining_accounts(remaining_accounts)
+    }
+}
