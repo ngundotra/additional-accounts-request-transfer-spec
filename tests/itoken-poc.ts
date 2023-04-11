@@ -30,6 +30,7 @@ import {
   AccountInfo,
   RpcResponseAndContext,
   SimulatedTransactionResponse,
+  TransactionInstruction,
 } from "@solana/web3.js";
 import { base64 } from "@coral-xyz/anchor/dist/cjs/utils/bytes";
 
@@ -46,20 +47,17 @@ async function resolveRemainingAccounts<I extends anchor.Idl>(
   }
   let data = base64.decode(b64Data);
 
-  // console.log(
-  //   "Total number of bytes: ",
-  //   new anchor.BN(data.slice(0, 4), null, "le").toString()
-  // );
-  // console.log("Total number of IAccountMetas: ", data.length);
+  // We start deserializing the Vec<IAccountMeta> from the 5th byte
+  // The first 4 bytes are u32 for the Vec of the return data
   let numBytes = data.slice(4, 8);
   let numMetas = new anchor.BN(numBytes, null, "le");
 
   let realAccountMetas: AccountMeta[] = [];
+  const metaSize = 34;
   for (let i = 0; i < numMetas.toNumber(); i += 1) {
-    const start = 8 + i * 34;
-    const end = start + 34;
+    const start = 8 + i * metaSize;
+    const end = start + metaSize;
     let meta = coder.decode("ExternalIAccountMeta", data.slice(start, end));
-    // console.log("Meta: ", meta.pubkey.toString(), meta.signer, meta.writable);
     realAccountMetas.push({
       pubkey: meta.pubkey,
       isWritable: meta.writable,
@@ -147,7 +145,31 @@ describe("itoken-poc", () => {
       console.log("Initialized token mint & ata:", tx);
     });
     it("Can transfer iProgram using wrapper", async () => {
-      let tx = await iProgram.methods
+      const preflightInstruction = await iProgram.methods
+        .preflightTransfer(new anchor.BN(1))
+        .accounts({
+          to: destination,
+          owner: wallet,
+          authority: wallet,
+          mint: iProgram.programId,
+        })
+        .remainingAccounts([])
+        .instruction();
+
+      let message = MessageV0.compile({
+        payerKey: wallet,
+        instructions: [preflightInstruction],
+        recentBlockhash: (
+          await wrapper.provider.connection.getRecentBlockhash()
+        ).blockhash,
+      });
+      let transaction = new VersionedTransaction(message);
+      let keys = await resolveRemainingAccounts(
+        wrapper,
+        await wrapper.provider.connection.simulateTransaction(transaction)
+      );
+
+      const tx = await iProgram.methods
         .transfer(new anchor.BN(1))
         .accounts({
           to: destination,
@@ -155,13 +177,7 @@ describe("itoken-poc", () => {
           authority: wallet,
           mint: iProgram.programId,
         })
-        .remainingAccounts([
-          {
-            pubkey: ledger,
-            isSigner: false,
-            isWritable: true,
-          },
-        ])
+        .remainingAccounts(keys)
         .rpc();
       console.log("Transferred iProgram with wrapper", tx);
     });
