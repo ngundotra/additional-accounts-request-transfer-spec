@@ -85,10 +85,6 @@ describe("itoken-poc", () => {
     let tokenMint: PublicKey;
     let ata: PublicKey;
     let destinationAta: PublicKey;
-    let ledger: PublicKey = PublicKey.findProgramAddressSync(
-      [Buffer.from("ledger")],
-      iProgram.programId
-    )[0];
 
     it("Can initialize a interface program", async () => {
       // Add your test here.
