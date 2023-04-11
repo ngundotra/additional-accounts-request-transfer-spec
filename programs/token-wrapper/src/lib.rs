@@ -198,3 +198,10 @@ pub struct TISetAuthority<'info> {
     /// CHECK:
     pub program: AccountInfo<'info>,
 }
+
+#[derive(Debug, Clone, AnchorSerialize, AnchorDeserialize)]
+pub struct ExternalIAccountMeta {
+    pub pubkey: Pubkey,
+    pub signer: bool,
+    pub writable: bool,
+}
