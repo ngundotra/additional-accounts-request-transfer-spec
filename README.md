@@ -217,6 +217,100 @@ vec![
 ```
 Additional account metas returned from the previous call to `preflight_transfer` must be appended to the list of accounts, in the order they were deserialized.
 
+
+# Off-Chain Usage
+
+In order to craft a `transfer` `TransactionInstruction` to a program that adheres to `ProgramTraitTransferV1`, you can simulate the
+`preflight_transfer` instruction with the required accounts, in order to get the list of additional `AccountMeta`s.
+
+Then you can append those `AccountMeta`s to the remaining accounts.
+
+Reference code is provided below, written using `@coral-xyz/anchor`.
+
+```typescript
+import * as anchor from '@coral-xyz/anchor';
+
+async function resolveRemainingAccounts<I extends anchor.Idl>(
+  program: anchor.Program<I>,
+  simulationResult: RpcResponseAndContext<SimulatedTransactionResponse>
+): Promise<AccountMeta[]> {
+  let coder = program.coder.types;
+
+  let returnDataTuple = simulationResult.value.returnData;
+  let [b64Data, encoding] = returnDataTuple["data"];
+  if (encoding !== "base64") {
+    throw new Error("Unsupported encoding: " + encoding);
+  }
+  let data = base64.decode(b64Data);
+
+  // We start deserializing the Vec<IAccountMeta> from the 5th byte
+  // The first 4 bytes are u32 for the Vec of the return data
+  let numBytes = data.slice(0, 4);
+  let numMetas = new anchor.BN(numBytes, null, "le");
+  let offset = 4;
+
+  let realAccountMetas: AccountMeta[] = [];
+  const metaSize = 34;
+  for (let i = 0; i < numMetas.toNumber(); i += 1) {
+    const start = offset + i * metaSize;
+    const end = start + metaSize;
+    let meta = coder.decode("ExternalIAccountMeta", data.slice(start, end));
+    realAccountMetas.push({
+      pubkey: meta.pubkey,
+      isWritable: meta.writable,
+      isSigner: meta.signer,
+    });
+  }
+  return realAccountMetas;
+}
+```
+
+This is used like so:
+```typescript
+// Simulate the `preflight_transfer` instruction
+const preflightInstruction = await wrapper.methods
+    .preflightTransfer(new anchor.BN(1))
+    .accounts({
+        to: destination,
+        owner: wallet,
+        authority: wallet,
+        mint: iProgram.programId,
+    })
+    .remainingAccounts([])
+    .instruction();
+
+let message = MessageV0.compile({
+    payerKey: wallet,
+    instructions: [preflightInstruction],
+    recentBlockhash: (
+        await wrapper.provider.connection.getRecentBlockhash()
+    ).blockhash,
+});
+let transaction = new VersionedTransaction(message);
+
+// Deserialize the `AccountMeta`s from the return data
+// We have to use VersionedTransactions to get `returnData`
+// back from simulated transactions 
+let keys = await resolveRemainingAccounts(
+    wrapper,
+    await wrapper.provider.connection.simulateTransaction(transaction)
+);
+
+// Send the actual `transfer` instruction with the required additional
+// accounts
+const tx = await wrapper.methods
+    .transfer(new anchor.BN(1))
+    .accounts({
+        owner: wallet,
+        to: destination,
+        authority: wallet,
+        mint: iProgram.programId,
+    })
+    .remainingAccounts(keys)
+    .rpc({ skipPreflight: true });
+console.log("Transferred with tx:", tx);
+```
+
 # Compatability: SPL Token 
 
 SPL tokens are compatible with this format. 
