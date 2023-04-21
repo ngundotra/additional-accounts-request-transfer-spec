@@ -50,7 +50,7 @@ pub mod token_program {
         Ok(())
     }
 
-    pub fn preflight_transfer(ctx: Context<Transfer>, amount: u64) -> Result<()> {
+    pub fn preflight_transfer(ctx: Context<ITransfer>, amount: u64) -> Result<()> {
         let ledger = Pubkey::find_program_address(&[LEDGER_PREFIX.as_bytes()], &crate::id()).0;
 
         set_return_data(
