@@ -49,13 +49,14 @@ async function resolveRemainingAccounts<I extends anchor.Idl>(
 
   // We start deserializing the Vec<IAccountMeta> from the 5th byte
   // The first 4 bytes are u32 for the Vec of the return data
-  let numBytes = data.slice(4, 8);
+  let numBytes = data.slice(0, 4);
   let numMetas = new anchor.BN(numBytes, null, "le");
+  let offset = 4;
 
   let realAccountMetas: AccountMeta[] = [];
   const metaSize = 34;
   for (let i = 0; i < numMetas.toNumber(); i += 1) {
-    const start = 8 + i * metaSize;
+    const start = offset + i * metaSize;
     const end = start + metaSize;
     let meta = coder.decode("ExternalIAccountMeta", data.slice(start, end));
     realAccountMetas.push({

@@ -55,8 +55,9 @@ pub fn get_interface_accounts(program_key: &Pubkey) -> Result<PreflightPayload> 
     let (key, program_data) = get_return_data().unwrap();
     assert_eq!(key, *program_key);
     let mut program_data = program_data.as_slice();
-    let return_data: Vec<u8> = Vec::try_from_slice(&mut program_data)?;
-    let additional_interface_accounts = PreflightPayload::try_from_slice(&return_data)?;
+    // let return_data: Vec<u8> = Vec::try_from_slice(&mut program_data)?;
+    // let additional_interface_accounts = PreflightPayload::try_from_slice(&return_data)?;
+    let additional_interface_accounts = PreflightPayload::try_from_slice(&program_data)?;
     msg!(
         "Additional interface accounts: {:?}",
         &additional_interface_accounts
@@ -118,8 +119,7 @@ pub fn call_preflight_interface_function<'info, T: ToAccountInfos<'info> + ToAcc
 ) -> Result<()> {
     // setup
     let mut ix_data: Vec<u8> =
-        hash::hash(format!("global:preflight_{}", &function_name).as_bytes())
-            .to_bytes()
+        hash::hash(format!("global:preflight_{}", &function_name).as_bytes()).to_bytes()[..8]
             .to_vec();
 
     ix_data.extend_from_slice(args);
@@ -146,9 +146,8 @@ pub fn call_interface_function<'info, T: ToAccountInfos<'info> + ToAccountMetas>
     // setup
     let remaining_accounts = ctx.remaining_accounts.to_vec();
 
-    let mut ix_data: Vec<u8> = hash::hash(format!("global:{}", &function_name).as_bytes())
-        .to_bytes()
-        .to_vec();
+    let mut ix_data: Vec<u8> =
+        hash::hash(format!("global:{}", &function_name).as_bytes()).to_bytes()[..8].to_vec();
     ix_data.extend_from_slice(&args);
 
     let mut ix_account_metas = ctx.accounts.to_account_metas(None);

@@ -18,7 +18,7 @@ pub const DEFAULT_CAPACITY: usize = 5;
 
 #[program]
 pub mod token_program {
-    use anchor_lang::solana_program::program::{get_return_data, invoke};
+    use anchor_lang::solana_program::program::{get_return_data, invoke, set_return_data};
     use anchor_lang::solana_program::{hash, instruction::Instruction};
     use token_interface::{IAccountMeta, PreflightPayload};
 
@@ -47,21 +47,24 @@ pub mod token_program {
             },
         );
         ledger.opaque_accounts = accounts.try_to_vec().unwrap();
-
         Ok(())
     }
 
-    pub fn preflight_transfer(ctx: Context<Transfer>, amount: u64) -> Result<Vec<u8>> {
+    pub fn preflight_transfer(ctx: Context<Transfer>, amount: u64) -> Result<()> {
         let ledger = Pubkey::find_program_address(&[LEDGER_PREFIX.as_bytes()], &crate::id()).0;
-        Ok(PreflightPayload {
-            accounts: vec![IAccountMeta {
-                pubkey: ledger,
-                signer: false,
-                writable: true,
-            }],
-        }
-        .try_to_vec()
-        .unwrap())
+
+        set_return_data(
+            &PreflightPayload {
+                accounts: vec![IAccountMeta {
+                    pubkey: ledger,
+                    signer: false,
+                    writable: true,
+                }],
+            }
+            .try_to_vec()
+            .unwrap(),
+        );
+        Ok(())
     }
 
     pub fn transfer(ctx: Context<Transfer>, amount: u64) -> Result<()> {
