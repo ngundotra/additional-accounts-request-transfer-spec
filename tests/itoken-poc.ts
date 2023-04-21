@@ -142,7 +142,7 @@ describe("itoken-poc", () => {
       console.log("Initialized token mint & ata:", tx);
     });
     it("Can transfer iProgram using wrapper", async () => {
-      const preflightInstruction = await iProgram.methods
+      const preflightInstruction = await wrapper.methods
         .preflightTransfer(new anchor.BN(1))
         .accounts({
           to: destination,
@@ -166,16 +166,16 @@ describe("itoken-poc", () => {
         await wrapper.provider.connection.simulateTransaction(transaction)
       );
 
-      const tx = await iProgram.methods
+      const tx = await wrapper.methods
         .transfer(new anchor.BN(1))
         .accounts({
-          to: destination,
           owner: wallet,
+          to: destination,
           authority: wallet,
           mint: iProgram.programId,
         })
         .remainingAccounts(keys)
-        .rpc();
+        .rpc({ skipPreflight: true });
       console.log("Transferred iProgram with wrapper", tx);
     });
     it("Can transfer tokenkeg using wrapper", async () => {
