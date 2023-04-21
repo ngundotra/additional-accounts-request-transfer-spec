@@ -1,5 +1,4 @@
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::hash;
 use anchor_lang::solana_program::{
     bpf_loader::ID as BPF_LOADER_ID, bpf_loader_upgradeable::ID as BPF_UPGRADEABLE_LOADER,
 };

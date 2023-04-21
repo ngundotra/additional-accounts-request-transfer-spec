@@ -54,9 +54,7 @@ impl PreflightPayload {
 pub fn get_interface_accounts(program_key: &Pubkey) -> Result<PreflightPayload> {
     let (key, program_data) = get_return_data().unwrap();
     assert_eq!(key, *program_key);
-    let mut program_data = program_data.as_slice();
-    // let return_data: Vec<u8> = Vec::try_from_slice(&mut program_data)?;
-    // let additional_interface_accounts = PreflightPayload::try_from_slice(&return_data)?;
+    let program_data = program_data.as_slice();
     let additional_interface_accounts = PreflightPayload::try_from_slice(&program_data)?;
     msg!(
         "Additional interface accounts: {:?}",
@@ -300,7 +298,7 @@ impl<'info> ToTargetProgram<'info> for ITransfer<'info> {
         let inner = ITransfer {
             to: self.to.to_account_info(),
             mint: self.mint.to_account_info(),
-            owner: self.mint.to_account_info(),
+            owner: self.owner.to_account_info(),
             authority: self.authority.clone(),
         };
         CpiContext::new(self.get_target_program(), inner)
