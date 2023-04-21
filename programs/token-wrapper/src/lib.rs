@@ -12,12 +12,12 @@ declare_id!("F96CHxPDRgjUypdUqpJocgT59vEPT79AFJXjtyPCBaRt");
 
 #[program]
 pub mod token_wrapper {
-    use anchor_lang::solana_program::program::get_return_data;
+    use anchor_lang::solana_program::program::{get_return_data, set_return_data};
     use anchor_spl::associated_token::get_associated_token_address;
 
     use super::*;
 
-    pub fn preflight_transfer(ctx: Context<ITransfer>, amount: u64) -> Result<Vec<u8>> {
+    pub fn preflight_transfer(ctx: Context<ITransfer>, amount: u64) -> Result<()> {
         let mint = &ctx.accounts.mint;
         match match_callee(mint.owner) {
             CalleeProgram::TokenStar => {
@@ -25,26 +25,29 @@ pub mod token_wrapper {
                 let source_ata = get_associated_token_address(ctx.accounts.owner.key, mint.key);
                 let destination_ata = get_associated_token_address(ctx.accounts.to.key, mint.key);
 
-                Ok(PreflightPayload {
-                    accounts: vec![
-                        IAccountMeta {
-                            pubkey: *mint.owner,
-                            signer: false,
-                            writable: false,
-                        },
-                        IAccountMeta {
-                            pubkey: source_ata,
-                            signer: false,
-                            writable: true,
-                        },
-                        IAccountMeta {
-                            pubkey: destination_ata,
-                            signer: false,
-                            writable: true,
-                        },
-                    ],
-                }
-                .try_to_vec()?)
+                set_return_data(
+                    &PreflightPayload {
+                        accounts: vec![
+                            IAccountMeta {
+                                pubkey: *mint.owner,
+                                signer: false,
+                                writable: false,
+                            },
+                            IAccountMeta {
+                                pubkey: source_ata,
+                                signer: false,
+                                writable: true,
+                            },
+                            IAccountMeta {
+                                pubkey: destination_ata,
+                                signer: false,
+                                writable: true,
+                            },
+                        ],
+                    }
+                    .try_to_vec()?,
+                );
+                Ok(())
             }
             CalleeProgram::Interface => {
                 // Interface invoke
@@ -64,7 +67,8 @@ pub mod token_wrapper {
                 )?;
                 let (key, return_data) = get_return_data().unwrap();
                 assert_eq!(key, *mint.key);
-                Ok(return_data)
+                set_return_data(&return_data);
+                Ok(())
             }
             // Bad invoke
             _ => return Err(ErrorCode::InstructionMissing.into()),
@@ -197,4 +201,11 @@ pub struct TISetAuthority<'info> {
     pub mint: AccountInfo<'info>,
     /// CHECK:
     pub program: AccountInfo<'info>,
+}
+
+#[derive(Debug, Clone, AnchorSerialize, AnchorDeserialize)]
+pub struct ExternalIAccountMeta {
+    pub pubkey: Pubkey,
+    pub signer: bool,
+    pub writable: bool,
 }
