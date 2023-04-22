@@ -137,6 +137,7 @@ Both instructions have a single parameter `amount` which must be serialized & de
 ### `preflight_transfer`
 
 This instruction's data has an 8 byte discriminantor: `[0x9d, 0x84, 0xf5, 0x5a, 0x61, 0xea, 0x7b, 0xe2]`, followed by u64 serialized in little-endian format.
+And no other bytes.
 
 The accounts to this instruction are:
 ```rust
@@ -185,6 +186,7 @@ pub type ReturnData = Vec<IAccountMeta>;
 ### `transfer`
 
 This instruction's data has an 8 byte discriminantor: `[0xa3, 0x34, 0xc8, 0xe7, 0x8c, 0x03, 0x45, 0xba]`, followed by u64 serialized in little-endian format.
+And no other bytes.
 
 The accounts to this instruction are:
 ```rust
