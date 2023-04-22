@@ -24,11 +24,7 @@ pub mod token_program {
 
     use super::*;
 
-    /// TODO: add this to interface specification
-    pub fn preflight_initialize_mint(ctx: Context<InitializeMint>, supply: u64) -> Result<()> {
-        Ok(())
-    }
-
+    /// Just used to initialize this program's singleton Ledger account
     pub fn initialize_mint(ctx: Context<InitializeMint>, supply: u64) -> Result<()> {
         let ledger = &mut ctx.accounts.ledger;
         let authority = &ctx.accounts.authority.key();
@@ -67,6 +63,8 @@ pub mod token_program {
         Ok(())
     }
 
+    // Transfer tokens from one account to another
+    // but only update their stored balance in the ledger account
     pub fn transfer(ctx: Context<Transfer>, amount: u64) -> Result<()> {
         assert_eq!(ctx.accounts.authority.key(), ctx.accounts.owner.key());
         let ledger = &mut ctx.accounts.ledger;
@@ -93,92 +91,6 @@ pub mod token_program {
 
         Ok(())
     }
-
-    pub fn freeze(ctx: Context<Freeze>) -> Result<()> {
-        let ledger = &mut ctx.accounts.ledger;
-        assert_eq!(
-            ledger.freeze_authority.key(),
-            ctx.accounts.freeze_authority.key()
-        );
-
-        let mut accounts = get_ledger_accounts(&ledger.opaque_accounts)?;
-        update_frozen(&mut accounts, &ctx.accounts.owner.key(), true)?;
-
-        ledger.opaque_accounts = accounts.try_to_vec().unwrap();
-
-        Ok(())
-    }
-
-    pub fn burn(ctx: Context<Burn>, amount: u64) -> Result<()> {
-        let ledger = &mut ctx.accounts.ledger;
-
-        let mut accounts = get_ledger_accounts(&ledger.opaque_accounts)?;
-        update_balance(&mut accounts, &ctx.accounts.owner.key(), amount, false)?;
-        ledger.opaque_accounts = accounts.try_to_vec().unwrap();
-
-        ledger.total_supply = ledger
-            .total_supply
-            .checked_sub(amount)
-            .ok_or(TokenError::InsufficientFunds)?;
-
-        Ok(())
-    }
-
-    /// VIEW FUNCTIONS
-
-    pub fn view(ctx: Context<ViewFunction>, function_name: String, args: String) -> Result<()> {
-        msg!("viewing function: {}", function_name);
-
-        let mut ix_data = hash::hash(format!("global:view_{}", function_name).as_bytes())
-            .to_bytes()[..8]
-            .to_vec();
-        ix_data.extend_from_slice(&args.try_to_vec()?);
-
-        invoke(
-            &Instruction {
-                program_id: crate::id(),
-                accounts: ctx.accounts.to_account_metas(None),
-                data: ix_data,
-            },
-            &ctx.accounts.to_account_infos(),
-        )?;
-
-        let (key, data) = get_return_data().unwrap();
-        assert_eq!(key, crate::id());
-        let result = String::try_from_slice(&data).unwrap();
-        msg!("result: {}", result);
-
-        Ok(())
-    }
-
-    pub fn view_get_balance_of(ctx: Context<ReadLedger>, owner_str: String) -> Result<String> {
-        let ledger = &ctx.accounts.ledger;
-        let owner = Pubkey::try_from_slice(bs58::decode(owner_str).into_vec().unwrap().as_slice())?;
-        let accounts = get_ledger_accounts(&ledger.opaque_accounts)?;
-        Ok(format!("{}", accounts.get(&owner).unwrap().amount))
-    }
-
-    pub fn view_get_total_supply(ctx: Context<ReadLedger>, _args: String) -> Result<String> {
-        let ledger = &ctx.accounts.ledger;
-        Ok(format!("{}", ledger.total_supply))
-    }
-
-    pub fn view_get_freeze_authority(ctx: Context<ReadLedger>, _args: String) -> Result<String> {
-        let ledger = &ctx.accounts.ledger;
-        Ok(format!("{}", ledger.freeze_authority))
-    }
-
-    pub fn view_get_mint_authority(ctx: Context<ReadLedger>, _args: String) -> Result<String> {
-        let ledger = &ctx.accounts.ledger;
-        Ok(format!("{}", ledger.mint_authority))
-    }
-
-    pub fn view_is_frozen(ctx: Context<ReadLedger>, owner_str: String) -> Result<String> {
-        let ledger = &ctx.accounts.ledger;
-        let owner = Pubkey::try_from_slice(bs58::decode(owner_str).into_vec().unwrap().as_slice())?;
-        let accounts = get_ledger_accounts(&ledger.opaque_accounts)?;
-        Ok(format!("{}", accounts.get(&owner).unwrap().is_frozen))
-    }
 }
 
 type LedgerAccounts = HashMap<Pubkey, LedgerAccount>;
@@ -204,13 +116,6 @@ fn update_balance(
             .checked_sub(amount)
             .ok_or(TokenError::InsufficientFunds)?;
     }
-    accounts.insert(*owner, account);
-    Ok(())
-}
-
-fn update_frozen(accounts: &mut LedgerAccounts, owner: &Pubkey, freeze_status: bool) -> Result<()> {
-    let mut account = accounts.get(owner).unwrap().clone();
-    account.is_frozen = freeze_status;
     accounts.insert(*owner, account);
     Ok(())
 }
@@ -265,59 +170,5 @@ pub struct Transfer<'info> {
     /// CHECK:
     pub mint: AccountInfo<'info>,
     #[account(mut, seeds=[LEDGER_PREFIX.as_bytes()], bump)]
-    pub ledger: Account<'info, Ledger>,
-}
-
-#[derive(Accounts)]
-pub struct IBurn<'info> {
-    /// CHECK:
-    pub owner: AccountInfo<'info>,
-}
-
-#[derive(Accounts)]
-pub struct Burn<'info> {
-    /// CHECK:
-    pub owner: Signer<'info>,
-    #[account(mut, seeds=[LEDGER_PREFIX.as_bytes()], bump)]
-    pub ledger: Account<'info, Ledger>,
-}
-
-#[derive(Accounts)]
-pub struct IFreeze<'info> {
-    /// CHECK:
-    pub owner: AccountInfo<'info>,
-    pub freeze_authority: Signer<'info>,
-}
-
-#[derive(Accounts)]
-pub struct Freeze<'info> {
-    /// CHECK:
-    pub owner: AccountInfo<'info>,
-    pub freeze_authority: Signer<'info>,
-    #[account(mut, seeds=[LEDGER_PREFIX.as_bytes()], bump)]
-    pub ledger: Account<'info, Ledger>,
-}
-
-#[derive(Accounts)]
-pub struct TISetAuthority<'info> {
-    /// CHECK:
-    pub owner: AccountInfo<'info>,
-    pub authority: Signer<'info>,
-    /// CHECK:
-    pub new_authority: AccountInfo<'info>,
-    /// CHECK:
-    pub mint: AccountInfo<'info>,
-    /// CHECK:
-    pub program: AccountInfo<'info>,
-}
-
-#[derive(Accounts)]
-pub struct ViewFunction<'info> {
-    /// CHECK:
-    target: AccountInfo<'info>,
-}
-
-#[derive(Accounts)]
-pub struct ReadLedger<'info> {
     pub ledger: Account<'info, Ledger>,
 }
