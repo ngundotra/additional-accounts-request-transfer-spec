@@ -10,6 +10,10 @@ use token_interface::{
 
 declare_id!("F96CHxPDRgjUypdUqpJocgT59vEPT79AFJXjtyPCBaRt");
 
+// This program is a wrapper around the token and token22 programs, in order to make
+// them compliant with the `transfer` interface.
+// It is also a pass-through interface to programs that adhere to the `transfer` interface.
+// This means that you can use this program to `transfer` over both interface programs and token-* programs.
 #[program]
 pub mod token_wrapper {
     use anchor_lang::solana_program::program::{get_return_data, set_return_data};
@@ -134,28 +138,19 @@ enum CalleeProgram {
     Error,
 }
 
+// This is a check that allows us to determine if we are calling
+// an SPL token program, or a custom implementation
 fn match_callee(mint_owner: &Pubkey) -> CalleeProgram {
     if *mint_owner == TOKEN_PROGRAM22_ID || *mint_owner == TOKEN_PROGRAM_ID {
         CalleeProgram::TokenStar
     } else if *mint_owner == BPF_LOADER_ID || *mint_owner == BPF_UPGRADEABLE_LOADER {
+        // If the `mint` account is actually a program, then we know to call a custom program
         CalleeProgram::Interface
     } else {
+        // Here, we could add support for custom implementations of token programs
         CalleeProgram::Error
     }
 }
-
-// #[derive(Accounts)]
-// pub struct TITransfer<'info> {
-//     /// CHECK:
-//     pub owner: AccountInfo<'info>,
-//     /// CHECK:
-//     pub to: AccountInfo<'info>,
-//     pub authority: Signer<'info>,
-//     /// CHECK:
-//     pub mint: AccountInfo<'info>,
-//     /// CHECK:
-//     pub program: AccountInfo<'info>,
-// }
 
 #[derive(Accounts)]
 pub struct ITransfer<'info> {
@@ -168,41 +163,9 @@ pub struct ITransfer<'info> {
     pub mint: AccountInfo<'info>,
 }
 
-#[derive(Accounts)]
-pub struct TIBurn<'info> {
-    /// CHECK:
-    pub owner: AccountInfo<'info>,
-    pub authority: Signer<'info>,
-    /// CHECK:
-    pub mint: AccountInfo<'info>,
-    /// CHECK:
-    pub program: AccountInfo<'info>,
-}
-
-#[derive(Accounts)]
-pub struct TIFreeze<'info> {
-    /// CHECK:
-    pub owner: AccountInfo<'info>,
-    pub authority: Signer<'info>,
-    /// CHECK:
-    pub mint: AccountInfo<'info>,
-    /// CHECK:
-    pub program: AccountInfo<'info>,
-}
-
-#[derive(Accounts)]
-pub struct TISetAuthority<'info> {
-    /// CHECK:
-    pub owner: AccountInfo<'info>,
-    pub authority: Signer<'info>,
-    /// CHECK:
-    pub new_authority: AccountInfo<'info>,
-    /// CHECK:
-    pub mint: AccountInfo<'info>,
-    /// CHECK:
-    pub program: AccountInfo<'info>,
-}
-
+// This is a copy-paste from `token-interface` crate, needed
+// to make sure that we can deserialize the return data in
+// our typescript client
 #[derive(Debug, Clone, AnchorSerialize, AnchorDeserialize)]
 pub struct ExternalIAccountMeta {
     pub pubkey: Pubkey,
