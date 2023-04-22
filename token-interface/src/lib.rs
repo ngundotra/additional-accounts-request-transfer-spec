@@ -1,8 +1,8 @@
 #![feature(generic_associated_types)]
 use std::collections::HashMap;
 
-pub mod traits;
-use traits::*;
+pub mod to_target_program;
+use to_target_program::*;
 
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::{
@@ -17,11 +17,8 @@ pub struct IAccountMeta {
     pub writable: bool,
 }
 
-/// TODO:
-/// - add discriminant
 #[derive(Debug, Clone, AnchorDeserialize, AnchorSerialize)]
 pub struct PreflightPayload {
-    // pub discriminant: Vec<u8>,
     pub accounts: Vec<IAccountMeta>,
 }
 
@@ -63,9 +60,8 @@ pub fn get_interface_accounts(program_key: &Pubkey) -> Result<PreflightPayload> 
     Ok(additional_interface_accounts)
 }
 
-/// TODO:
-///  - add support for invoking the target program directly (without the wrapper)
-///  - add support for adding the ix discriminant
+// Allows calling `transfer` on the target program.
+// This invokes the preflight function followed by the actual function on the target program
 pub fn call<
     'info,
     C1: ToAccountInfos<'info> + ToAccountMetas + ToTargetProgram<'info, TargetCtx<'info> = C2>,
@@ -110,6 +106,7 @@ pub fn call<
     Ok(())
 }
 
+// This calls the preflight function on the target program
 pub fn call_preflight_interface_function<'info, T: ToAccountInfos<'info> + ToAccountMetas>(
     function_name: String,
     ctx: &CpiContext<'_, '_, '_, 'info, T>,
@@ -134,6 +131,8 @@ pub fn call_preflight_interface_function<'info, T: ToAccountInfos<'info> + ToAcc
     Ok(())
 }
 
+// This calls the main function on the target program, and passes along the requested
+// account_metas from the preflight function
 pub fn call_interface_function<'info, T: ToAccountInfos<'info> + ToAccountMetas>(
     function_name: String,
     ctx: CpiContext<'_, '_, '_, 'info, T>,
@@ -202,19 +201,6 @@ pub fn call_interface_function<'info, T: ToAccountInfos<'info> + ToAccountMetas>
 }
 
 #[derive(Accounts)]
-pub struct TITransfer<'info> {
-    /// CHECK:
-    pub owner: AccountInfo<'info>,
-    /// CHECK:
-    pub to: AccountInfo<'info>,
-    pub authority: Signer<'info>,
-    /// CHECK:
-    pub mint: AccountInfo<'info>,
-    /// CHECK:
-    pub program: AccountInfo<'info>,
-}
-
-#[derive(Accounts)]
 pub struct ITransfer<'info> {
     /// CHECK:
     pub owner: AccountInfo<'info>,
@@ -225,62 +211,8 @@ pub struct ITransfer<'info> {
     pub mint: AccountInfo<'info>,
 }
 
-#[derive(Accounts)]
-pub struct TIBurn<'info> {
-    /// CHECK:
-    pub owner: AccountInfo<'info>,
-    pub authority: Signer<'info>,
-    /// CHECK:
-    pub mint: AccountInfo<'info>,
-    /// CHECK:
-    pub program: AccountInfo<'info>,
-}
-
-#[derive(Accounts)]
-pub struct TIFreeze<'info> {
-    /// CHECK:
-    pub owner: AccountInfo<'info>,
-    pub authority: Signer<'info>,
-    /// CHECK:
-    pub mint: AccountInfo<'info>,
-    /// CHECK:
-    pub program: AccountInfo<'info>,
-}
-
-#[derive(Accounts)]
-pub struct TISetAuthority<'info> {
-    /// CHECK:
-    pub owner: AccountInfo<'info>,
-    pub authority: Signer<'info>,
-    /// CHECK:
-    pub new_authority: AccountInfo<'info>,
-    /// CHECK:
-    pub mint: AccountInfo<'info>,
-    /// CHECK:
-    pub program: AccountInfo<'info>,
-}
-
-// #[derive(Accounts)]
-// pub struct TIUnlock<'info> {
-//     #[account(mut)]
-//     pub token: InterfaceAccount<'info, TokenAccount>,
-//     pub mint: InterfaceAccount<'info, Mint>,
-//     pub delegate: Signer<'info>,
-//     pub token_program: Interface<'info, TokenInterface>,
-//     /// CHECK: permission program
-//     pub perm_program: AccountInfo<'info>,
-//     // ix_accounts: Option<Account<'info, IxAccounts>>,
-// }
-
-// #[derive(Accounts)]
-// pub struct IUnlock<'info> {
-//     #[account(mut)]
-//     pub token: AccountInfo<'info>,
-//     pub mint: AccountInfo<'info>,
-//     pub delegate: AccountInfo<'info>,
-//     pub token_program: AccountInfo<'info>,
-// }
-
+// This allows us to create a new context out of `ITransfer`
+// that uses `mint` account as the target program.
 impl<'info> ToTargetProgram<'info> for ITransfer<'info> {
     type TargetCtx<'a> = ITransfer<'a>;
 
