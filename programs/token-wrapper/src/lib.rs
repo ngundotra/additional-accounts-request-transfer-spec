@@ -35,7 +35,7 @@ pub mod token_wrapper {
     pub fn preflight_transfer(ctx: Context<ITransfer>, amount: u64) -> Result<()> {
         let mint = &ctx.accounts.mint;
         match match_callee(mint.owner) {
-            CalleeProgram::TokenStar => {
+            TransferInterface::SplToken => {
                 // TOKEN invoke
                 let source_ata = get_associated_token_address(ctx.accounts.owner.key, mint.key);
                 let destination_ata = get_associated_token_address(ctx.accounts.to.key, mint.key);
@@ -64,7 +64,7 @@ pub mod token_wrapper {
                 );
                 Ok(())
             }
-            CalleeProgram::Interface => {
+            TransferInterface::Interface => {
                 // Interface invoke
                 let ctx = CpiContext::new(
                     mint.to_account_info(),
@@ -85,7 +85,7 @@ pub mod token_wrapper {
                 set_return_data(&return_data);
                 Ok(())
             }
-            CalleeProgram::TokenMetadata => {
+            TransferInterface::TokenMetadata => {
                 let meta = Metadata::from_account_info(&mint.to_account_info())?;
 
                 let mint_address = meta.mint;
@@ -220,9 +220,9 @@ pub mod token_wrapper {
     ) -> Result<()> {
         let mint = &ctx.accounts.mint;
         match match_callee(mint.owner) {
-            CalleeProgram::TokenStar => {
+            TransferInterface::SplToken => {
                 // Token invoke
-                msg!("Token-*");
+                msg!("SPL Token");
                 let remaining_accounts = ctx.remaining_accounts;
                 let token = remaining_accounts.get(0).unwrap().to_account_info();
                 let from = remaining_accounts.get(1).unwrap().to_account_info();
@@ -245,7 +245,7 @@ pub mod token_wrapper {
                 let mint_data = anchor_spl::token_interface::Mint::try_deserialize(&mut ptr)?;
                 anchor_spl::token_interface::transfer_checked(ctx, amount, mint_data.decimals)?;
             }
-            CalleeProgram::Interface => {
+            TransferInterface::Interface => {
                 // Interface invoke
                 msg!("Interface");
                 let ctx = CpiContext::new(
@@ -260,9 +260,9 @@ pub mod token_wrapper {
                 .with_remaining_accounts(ctx.remaining_accounts.to_vec());
                 call("transfer".to_string(), ctx, amount.try_to_vec()?, false)?;
             }
-            CalleeProgram::TokenMetadata => {
-                // TokenMetadata invoke
-                msg!("TokenMetadata");
+            TransferInterface::TokenMetadata => {
+                // Token Metadata invoke
+                msg!("Token Metadata");
 
                 // Note: The first account is actually the token-metadata program account info
                 let program_id = ctx.remaining_accounts.get(0).unwrap().key;
@@ -313,8 +313,8 @@ pub mod token_wrapper {
     }
 }
 
-enum CalleeProgram {
-    TokenStar,
+enum TransferInterface {
+    SplToken,
     Interface,
     TokenMetadata,
     Error,
@@ -322,17 +322,17 @@ enum CalleeProgram {
 
 // This is a check that allows us to determine if we are calling
 // an SPL token program, or a custom implementation
-fn match_callee(mint_owner: &Pubkey) -> CalleeProgram {
+fn match_callee(mint_owner: &Pubkey) -> TransferInterface {
     if *mint_owner == TOKEN_PROGRAM22_ID || *mint_owner == TOKEN_PROGRAM_ID {
-        CalleeProgram::TokenStar
+        TransferInterface::SplToken
     } else if *mint_owner == BPF_LOADER_ID || *mint_owner == BPF_UPGRADEABLE_LOADER {
         // If the `mint` account is actually a program, then we know to call a custom program
-        CalleeProgram::Interface
+        TransferInterface::Interface
     } else if *mint_owner == TOKEN_METADATA_ID {
-        CalleeProgram::TokenMetadata
+        TransferInterface::TokenMetadata
     } else {
         // Here, we could add support for custom implementations of token programs
-        CalleeProgram::Error
+        TransferInterface::Error
     }
 }
 
