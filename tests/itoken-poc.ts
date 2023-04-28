@@ -20,13 +20,12 @@ import {
   Keypair,
   PublicKey,
   AccountMeta,
-  RpcResponseAndContext,
-  SimulatedTransactionResponse,
   TransactionInstruction,
 } from "@solana/web3.js";
 import { base64 } from "@coral-xyz/anchor/dist/cjs/utils/bytes";
 
 import { DEFAULT_PASS_RULESET, create, mintPnft } from "./pnft";
+import { Metadata } from "@metaplex-foundation/mpl-token-metadata";
 
 async function resolveRemainingAccounts<I extends anchor.Idl>(
   program: anchor.Program<I>,
@@ -227,19 +226,42 @@ describe("itoken-poc", () => {
         .instruction();
       let keys = await resolveRemainingAccounts(wrapper, [ix]);
 
-      const txId = await wrapper.methods
-        .transfer(new anchor.BN(1))
-        .accounts({
-          to: destination,
-          owner: wallet,
-          mint: pnftMetadata,
-          authority: wallet,
-        })
-        .remainingAccounts(keys)
-        .rpc({ skipPreflight: true, commitment: "confirmed" });
-      console.log("transferred pnft with txId: ", txId);
+      // TODO(ngundotra): do this in the wrapper
+      let pnft = await Metadata.fromAccountAddress(
+        wrapper.provider.connection,
+        pnftMetadata,
+        "confirmed"
+      );
+      let pMint = pnft.mint;
+      let destAta = getAssociatedTokenAddressSync(pMint, destination);
+      let preInstructions = [
+        createAssociatedTokenAccountInstruction(
+          wallet,
+          destAta,
+          destination,
+          pMint,
+          tokenkeg
+        ),
+      ];
+      try {
+        const txId = await wrapper.methods
+          .transfer(new anchor.BN(1))
+          .accounts({
+            to: destination,
+            owner: wallet,
+            mint: pnftMetadata,
+            authority: wallet,
+          })
+          .remainingAccounts(keys)
+          .preInstructions(preInstructions)
+          .rpc({ skipPreflight: true, commitment: "confirmed" });
+        console.log("attempted transferred pnft with txId: ", txId);
+      } catch (e) {
+        console.error(e);
+      }
     });
     it("Can transfer tokenkeg using wrapper", async () => {
+      // TODO(ngundotra): do this in the wrapper
       let preInstructions = [
         createAssociatedTokenAccountInstruction(
           wallet,

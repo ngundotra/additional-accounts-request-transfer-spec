@@ -4,11 +4,8 @@ use anchor_lang::solana_program::{
     program::MAX_RETURN_DATA, sysvar::instructions::ID as SYSVAR_INSTRUCTIONS_ID,
 };
 use anchor_spl::{token::ID as TOKEN_PROGRAM_ID, token_2022::ID as TOKEN_PROGRAM22_ID};
-use mpl_token_metadata::{
-    instruction::{Transfer, TransferArgs},
-    state::TokenMetadataAccount,
-    ID as TOKEN_METADATA_ID,
-};
+use borsh::ser::BorshSerialize;
+use mpl_token_metadata::{state::TokenMetadataAccount, ID as TOKEN_METADATA_ID};
 use token_interface::{
     call, call_preflight_interface_function, IAccountMeta, ITransfer as _ITransfer,
     PreflightPayload,
@@ -28,8 +25,9 @@ pub mod token_wrapper {
     };
     use anchor_spl::associated_token::{self, get_associated_token_address};
     use mpl_token_metadata::{
-        pda::find_token_record_account,
-        state::{get_master_edition, Metadata, ProgrammableConfig},
+        assertions::metadata,
+        pda::{find_master_edition_account, find_token_record_account},
+        state::{Metadata, ProgrammableConfig},
     };
 
     use super::*;
@@ -94,14 +92,28 @@ pub mod token_wrapper {
                 let owner_ata = get_associated_token_address(ctx.accounts.owner.key, &mint_address);
                 let destination_ata =
                     get_associated_token_address(ctx.accounts.to.key, &mint_address);
-                let master_edition_address =
-                    mpl_token_metadata::pda::find_master_edition_account(mint.key).0;
+                let master_edition_address = Pubkey::find_program_address(
+                    &[
+                        "metadata".as_bytes(),
+                        mpl_token_metadata::id().as_ref(),
+                        mint_address.as_ref(),
+                        "edition".as_bytes(),
+                    ],
+                    &mpl_token_metadata::id(),
+                )
+                .0;
 
                 let owner_token_record = find_token_record_account(&mint_address, &owner_ata).0;
                 let destination_token_record =
                     find_token_record_account(&mint_address, &destination_ata).0;
 
                 let mut accounts: Vec<IAccountMeta> = vec![
+                    // token-metadata
+                    IAccountMeta {
+                        pubkey: mpl_token_metadata::id(),
+                        signer: false,
+                        writable: false,
+                    },
                     // #[account(0, writable, name="token", desc="Token account")]
                     IAccountMeta {
                         pubkey: owner_ata.key(),
@@ -192,7 +204,7 @@ pub mod token_wrapper {
                     }
                 }
 
-                let mut serialized = PreflightPayload { accounts }.try_to_vec()?;
+                let serialized = PreflightPayload { accounts }.try_to_vec()?;
                 msg!("Serialized len: {}, {}", serialized.len(), MAX_RETURN_DATA);
                 set_return_data(&serialized);
                 Ok(())
@@ -251,58 +263,48 @@ pub mod token_wrapper {
             CalleeProgram::TokenMetadata => {
                 // TokenMetadata invoke
                 msg!("TokenMetadata");
-                // let meta = Metadata::from_account_info(&mint.to_account_info())?;
 
-                // let mint_address = meta.mint;
-                // let owner_ata = get_associated_token_address(ctx.accounts.owner.key, &mint_address);
-                // let destination_ata =
-                //     get_associated_token_address(ctx.accounts.to.key, &mint_address);
-                // let master_edition_address =
-                //     mpl_token_metadata::pda::find_master_edition_account(mint.key).0;
+                // Note: The first account is actually the token-metadata program account info
+                let program_id = ctx.remaining_accounts.get(0).unwrap().key;
+                let mut accounts: Vec<AccountInfo> = vec![];
 
-                // match meta.programmable_config {
-                //     Some(programmable_config) => match programmable_config {
-                //         ProgrammableConfig::V1 { rule_set } => match rule_set {
-                //             Some(rule_set_pubkey) => {
-                //                 msg!("Ruleset found: {}", rule_set_pubkey);
-                //             }
-                //             None => {
-                //                 msg!("No programmable config found, using default")
-                //             }
-                //         },
-                //     },
-                //     None => {
-                //         msg!("No programmable config found, using default")
-                //     }
-                // }
+                // yeah yeah it's inefficient, i know
+                accounts.extend_from_slice(&ctx.remaining_accounts[1..]);
 
                 // #[account(0, writable, name="token", desc="Token account")]
                 // #[account(1, name="token_owner", desc="Token account owner")]
+                accounts.insert(1, ctx.accounts.owner.to_account_info());
                 // #[account(2, writable, name="destination", desc="Destination token account")]
                 // #[account(3, name="destination_owner", desc="Destination token account owner")]
+                accounts.insert(3, ctx.accounts.to.to_account_info());
                 // #[account(4, name="mint", desc="Mint of token asset")]
                 // #[account(5, writable, name="metadata", desc="Metadata (pda of ['metadata', program id, mint id])")]
+                accounts.insert(5, ctx.accounts.mint.to_account_info());
                 // #[account(6, optional, name="edition", desc="Edition of token asset")]
                 // #[account(7, optional, writable, name="owner_token_record", desc="Owner token record account")]
                 // #[account(8, optional, writable, name="destination_token_record", desc="Destination token record account")]
                 // #[account(9, signer, name="authority", desc="Transfer authority (token owner or delegate)")]
+                accounts.insert(9, ctx.accounts.authority.to_account_info());
                 // #[account(10, signer, writable, name="payer", desc="Payer")]
+                // yeah the authority has to be the payer here...
+                // FIXME(ngundotra): this feels implicit, that all signers have to be the authority
+                accounts.insert(10, ctx.accounts.authority.to_account_info());
                 // #[account(11, name="system_program", desc="System Program")]
                 // #[account(12, name="sysvar_instructions", desc="Instructions sysvar account")]
                 // #[account(13, name="spl_token_program", desc="SPL Token Program")]
                 // #[account(14, name="spl_ata_program", desc="SPL Associated Token Account program")]
                 // #[account(15, optional, name="authorization_rules_program", desc="Token Authorization Rules Program")]
                 // #[account(16, optional, name="authorization_rules", desc="Token Authorization Rules account")]
-                // #[default_optional_accounts]
-                // let meta_ctx = Transfer {
-                //     token_owner_info: ctx.accounts.owner.to_account_info(),
-                //     destination_owner_info: ctx.accounts.to.to_account_info(),
-                //     metadata_info: ctx.accounts.mint.to_account_info(),
-                //     authority_info: ctx.accounts.authority.to_account_info(),
-                //     payer_info: ctx.accounts.authority.to_account_info(), // spl_token_program_info:
-                // };
 
-                return Ok(());
+                let mut ix_data = vec![49, 0];
+                ix_data.extend_from_slice(&amount.to_le_bytes());
+                ix_data.push(0);
+                let ix = anchor_lang::solana_program::instruction::Instruction {
+                    program_id: *program_id,
+                    data: ix_data,
+                    accounts: accounts.to_account_metas(None),
+                };
+                anchor_lang::solana_program::program::invoke(&ix, accounts.as_slice())?;
             }
             // Bad invoke
             _ => return Err(ErrorCode::InstructionMissing.into()),
