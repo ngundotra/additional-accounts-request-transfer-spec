@@ -21,16 +21,16 @@ By standardizing a simple approach to solving program abstraction, we ensure bas
 ## Specification: Program Trait - Transfer
 <!-- A Solana Pay transfer request URL describes a non-interactive request for a SOL or SPL Token transfer. -->
 
-Executing a "transfer" instruction against a program that implements `ProgramTraitTransferV1` requires two CPIs from the caller program to the callee program. 
+Executing a "transfer" instruction against a program that implements this spec requires two CPIs from the caller program to the callee program. 
 The first CPI from the caller to the callee is to determine which (if any) additional accounts are require for the 2nd CPI.
 The second CPI from the caller to the callee is with the same list of accounts from the 1st call, but also passes the list of accounts requested by the first CPI.
 
-The `ProgramTraitTransferV1` trait requires that programs implement two instructions, described below.
+The Additional Accounts Request spec for Transfers requires that programs implement two instructions, described below.
 
 ```rust
 use anchor_lang::prelude::*;
 
-/// Accounts required by ProgramTraitTransferV1
+/// Required Accounts
 #[derive(Accounts)]
 pub struct ITransfer<'info> {
     /// CHECK:
@@ -94,7 +94,7 @@ Executing "transfer" against a conforming program is interactive because optiona
 
 # Accounts 
 
-The accounts list required for adhering to `ProgramTraitTransferV1` is simply a list of account metas, that have no direct relationship to each other.
+The accounts list required for adhering to this Transfer spec is simply a list of account metas, that have no direct relationship to each other.
 
 We overlay semantic descriptions to give advice on how this should be used, but ultimately we expect that there will be program implementations that abuse the 
 semantic descriptions.
@@ -125,7 +125,7 @@ This is the account that has the authority to transfer from owner to the recipie
 
 This account was included for Token* compatability.
 This account is meant to be your implementing program's program id, so calling programs know which program to execute.
-Or, it can be used as a token* `Mint` account, which allows programs to decide if they need to execute a token* CPI or a `ProgramTraitTransferV1`.
+Or, it can be used as a token* `Mint` account, which allows programs to decide if they need to execute a token* CPI or an interface-compliant "transfer".
 
 # Instructions
 
@@ -222,7 +222,7 @@ Additional account metas returned from the previous call to `preflight_transfer`
 
 # Off-Chain Usage
 
-In order to craft a `transfer` `TransactionInstruction` to a program that adheres to `ProgramTraitTransferV1`, you can simulate the
+In order to craft a `transfer` `TransactionInstruction` to a program that adheres to this spec, you can simulate the
 `preflight_transfer` instruction with the required accounts, in order to get the list of additional `AccountMeta`s.
 
 Then you can append those `AccountMeta`s to the remaining accounts.
@@ -316,18 +316,24 @@ console.log("Transferred with tx:", tx);
 # Compatability: SPL Token 
 
 SPL tokens are compatible with this format. 
-There is a provided program `programs/token-wrapper` that shows how to "wrap" `tokenkeg` to make it compatible with `ProgramTraitTransferV1`.
+There is a provided program `programs/token-wrapper` that shows how to "wrap" `tokenkeg` to make it compatible with this spec.
+
+# Compatability: Token Metadata 
+
+Programmable NFTs are compatible with this format. 
+There is a provided program `programs/token-wrapper` that shows how to "wrap" `token-metadata` to make it compatible with this spec.
 
 # Limitations
 
 When returning a vector of account metas in the `preflight_transfer` instruction, additional account metas must have `isSigner: false`. 
 
-Requiring additional `signer` account metas must come in the form of a new `ProgramTrait` specification.
+Requiring additional `signer` account metas must come in the form of a new version of this specification.
 
 
 # Reference
 
-There is a reference implementation of a program adhering to `ProgramTraitTransferV1` under `programs/token-program` of a program that records which `pubkey` owns how much of a token in a singleton address.
+There is a reference implementation of a program adhering to this spec under `programs/token-program` of a program that records which `pubkey` owns how much of a token in a singleton address. 
+The implementation is meant to mimic how ERC-20 tokens work.
 
 Calling `transfer` on this program will change decrement the owner's stored balance by `amount` and increment the recipient's balance by `amount`. 
 
