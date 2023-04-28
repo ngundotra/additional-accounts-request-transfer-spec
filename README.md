@@ -5,8 +5,6 @@ This spec is currently alpha and subject to change
 ## Summary
 A standard protocol to enable on-chain and client communication with Solana programs to "transfer" assets that allows target programs to require additional accounts.
 
-This standard draws inspiration from BIP 21 and EIP 681.
-
 ## Motivation
 A standard protocol for enabling programs to support "transfer"ring assets while also allowing a flexible number of accounts into the program allows for a better user experience across apps and wallets in the Solana ecosystem.
 
