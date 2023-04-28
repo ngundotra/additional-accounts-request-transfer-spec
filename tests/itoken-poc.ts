@@ -1,20 +1,15 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
-import { ItokenPoc } from "../target/types/itoken_poc";
 import { TokenProgram } from "../target/types/token_program";
 import { TokenWrapper } from "../target/types/token_wrapper";
 import {
-  TOKEN_2022_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
-  createMint,
   MINT_SIZE,
   getMinimumBalanceForRentExemptMint,
   createInitializeMint2Instruction,
   createMintToInstruction,
-  createAssociatedTokenAccount,
   createAssociatedTokenAccountInstruction,
   getAssociatedTokenAddressSync,
-  createTransferInstruction,
 } from "@solana/spl-token";
 import {
   Transaction,
@@ -24,27 +19,43 @@ import {
   SystemProgram,
   Keypair,
   PublicKey,
-  Connection,
   AccountMeta,
-  sendAndConfirmTransaction,
-  AccountInfo,
   RpcResponseAndContext,
   SimulatedTransactionResponse,
   TransactionInstruction,
 } from "@solana/web3.js";
 import { base64 } from "@coral-xyz/anchor/dist/cjs/utils/bytes";
 
+import { create, mintPnft, transfer } from "./pnft";
+
 async function resolveRemainingAccounts<I extends anchor.Idl>(
   program: anchor.Program<I>,
-  simulationResult: RpcResponseAndContext<SimulatedTransactionResponse>
+  instructions: TransactionInstruction[]
 ): Promise<AccountMeta[]> {
-  let coder = program.coder.types;
+  // Simulate transaction
+  let message = MessageV0.compile({
+    payerKey: program.provider.publicKey!,
+    instructions,
+    recentBlockhash: (await program.provider.connection.getRecentBlockhash())
+      .blockhash,
+  });
+  let transaction = new VersionedTransaction(message);
+  let simulationResult = await program.provider.connection.simulateTransaction(
+    transaction,
+    { commitment: "confirmed" }
+  );
 
-  let returnDataTuple = simulationResult.value.returnData;
-  let [b64Data, encoding] = returnDataTuple["data"];
-  if (encoding !== "base64") {
-    throw new Error("Unsupported encoding: " + encoding);
-  }
+  // When the simulation RPC response is fixed, then the following code will work
+  // but until then, we have to parse the logs manually
+  // ===============================================================
+  // let returnDataTuple = simulationResult.value.returnData;
+  // let [b64Data, encoding] = returnDataTuple["data"];
+  // if (encoding !== "base64") {
+  //   throw new Error("Unsupported encoding: " + encoding);
+  // }
+  // ===============================================================
+  let logs = simulationResult.value.logs;
+  let b64Data = logs[logs.length - 2].split(" ")[3];
   let data = base64.decode(b64Data);
 
   // We start deserializing the Vec<IAccountMeta> from the 5th byte
@@ -54,6 +65,7 @@ async function resolveRemainingAccounts<I extends anchor.Idl>(
   let offset = 4;
 
   let realAccountMetas: AccountMeta[] = [];
+  let coder = program.coder.types;
   const metaSize = 34;
   for (let i = 0; i < numMetas.toNumber(); i += 1) {
     const start = offset + i * metaSize;
@@ -86,6 +98,9 @@ describe("itoken-poc", () => {
     let tokenMint: PublicKey;
     let ata: PublicKey;
     let destinationAta: PublicKey;
+
+    // pnft
+    let pnftMetadata: PublicKey;
 
     it("Can initialize a interface program", async () => {
       // Add your test here.
@@ -153,18 +168,9 @@ describe("itoken-poc", () => {
         .remainingAccounts([])
         .instruction();
 
-      let message = MessageV0.compile({
-        payerKey: wallet,
-        instructions: [preflightInstruction],
-        recentBlockhash: (
-          await wrapper.provider.connection.getRecentBlockhash()
-        ).blockhash,
-      });
-      let transaction = new VersionedTransaction(message);
-      let keys = await resolveRemainingAccounts(
-        wrapper,
-        await wrapper.provider.connection.simulateTransaction(transaction)
-      );
+      let keys = await resolveRemainingAccounts(wrapper, [
+        preflightInstruction,
+      ]);
 
       const tx = await wrapper.methods
         .transfer(new anchor.BN(1))
@@ -177,6 +183,57 @@ describe("itoken-poc", () => {
         .remainingAccounts(keys)
         .rpc({ skipPreflight: true });
       console.log("Transferred iProgram with wrapper", tx);
+    });
+    it("Can initialize a pnft", async () => {
+      let {
+        metadata: metadataKey,
+        mintKp,
+        tx,
+      } = await create(wrapper.provider.connection, wallet, {
+        name: "test",
+        symbol: "test",
+        uri: "test",
+      });
+
+      pnftMetadata = metadataKey;
+
+      let txId = await wrapper.provider.sendAndConfirm(tx, [mintKp], {
+        skipPreflight: true,
+        commitment: "confirmed",
+      });
+      console.log("created pnft with txId: ", txId, pnftMetadata.toBase58());
+
+      tx = await mintPnft(wrapper.provider.connection, pnftMetadata, wallet, 1);
+      txId = await wrapper.provider.sendAndConfirm(tx, [], {
+        skipPreflight: true,
+        commitment: "confirmed",
+      });
+      console.log("minted pnft with txId: ", txId);
+    });
+    it("Can transfer pnft using wrapper", async () => {
+      const ix = await wrapper.methods
+        .preflightTransfer(new anchor.BN(1))
+        .accounts({
+          to: destination,
+          owner: wallet,
+          mint: pnftMetadata,
+          authority: wallet,
+        })
+        .instruction();
+      let keys = await resolveRemainingAccounts(wrapper, [ix]);
+      console.log("keys", keys);
+
+      const txId = await wrapper.methods
+        .transfer(new anchor.BN(1))
+        .accounts({
+          to: destination,
+          owner: wallet,
+          mint: pnftMetadata,
+          authority: wallet,
+        })
+        .remainingAccounts(keys)
+        .rpc({ skipPreflight: true, commitment: "confirmed" });
+      console.log("transferred pnft with txId: ", txId);
     });
     it("Can transfer tokenkeg using wrapper", async () => {
       let preInstructions = [
@@ -201,18 +258,10 @@ describe("itoken-poc", () => {
         .preInstructions([])
         .instruction();
 
-      let message = MessageV0.compile({
-        payerKey: wallet,
-        instructions: [...preInstructions, preflightInstruction],
-        recentBlockhash: (
-          await wrapper.provider.connection.getRecentBlockhash()
-        ).blockhash,
-      });
-      let transaction = new VersionedTransaction(message);
-      let keys = await resolveRemainingAccounts(
-        wrapper,
-        await wrapper.provider.connection.simulateTransaction(transaction)
-      );
+      let keys = await resolveRemainingAccounts(wrapper, [
+        ...preInstructions,
+        preflightInstruction,
+      ]);
 
       let instruction = await wrapper.methods
         .transfer(new anchor.BN(1))
@@ -225,14 +274,14 @@ describe("itoken-poc", () => {
         .remainingAccounts(keys)
         .preInstructions([])
         .instruction();
-      message = MessageV0.compile({
+      let message = MessageV0.compile({
         payerKey: wallet,
         instructions: [...preInstructions, instruction],
         recentBlockhash: (
           await wrapper.provider.connection.getRecentBlockhash()
         ).blockhash,
       });
-      transaction = new VersionedTransaction(message);
+      let transaction = new VersionedTransaction(message);
       let tx = await wrapper.provider.sendAndConfirm(transaction, [], {
         skipPreflight: true,
       });
