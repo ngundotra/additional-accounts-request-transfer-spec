@@ -221,7 +221,6 @@ describe("itoken-poc", () => {
         })
         .instruction();
       let keys = await resolveRemainingAccounts(wrapper, [ix]);
-      console.log("keys", keys);
 
       const txId = await wrapper.methods
         .transfer(new anchor.BN(1))
