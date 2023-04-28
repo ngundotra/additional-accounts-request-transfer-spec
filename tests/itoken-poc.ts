@@ -26,7 +26,7 @@ import {
 } from "@solana/web3.js";
 import { base64 } from "@coral-xyz/anchor/dist/cjs/utils/bytes";
 
-import { create, mintPnft, transfer } from "./pnft";
+import { DEFAULT_PASS_RULESET, create, mintPnft } from "./pnft";
 
 async function resolveRemainingAccounts<I extends anchor.Idl>(
   program: anchor.Program<I>,
@@ -189,11 +189,16 @@ describe("itoken-poc", () => {
         metadata: metadataKey,
         mintKp,
         tx,
-      } = await create(wrapper.provider.connection, wallet, {
-        name: "test",
-        symbol: "test",
-        uri: "test",
-      });
+      } = await create(
+        wrapper.provider.connection,
+        wallet,
+        DEFAULT_PASS_RULESET,
+        {
+          name: "test",
+          symbol: "test",
+          uri: "test",
+        }
+      );
 
       pnftMetadata = metadataKey;
 
