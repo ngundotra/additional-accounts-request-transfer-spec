@@ -1,4 +1,4 @@
-# SRFC 00010 - Program Trait - Transfer 
+# SRFC 00010 - Additional Accounts Request - Transfer Spec
 
 This spec is currently alpha and subject to change
 
@@ -320,7 +320,7 @@ There is a provided program `programs/token-wrapper` that shows how to "wrap" `t
 
 # Limitations
 
-When returning a vector of account metas in the `preflight_transfer` instruction, additional account metas must have `isSigner: true`. 
+When returning a vector of account metas in the `preflight_transfer` instruction, additional account metas must have `isSigner: false`. 
 
 Requiring additional `signer` account metas must come in the form of a new `ProgramTrait` specification.
 
